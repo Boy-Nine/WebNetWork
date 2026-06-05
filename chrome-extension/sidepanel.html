@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="app">
+  <div id="toast" class="toast hidden"></div>
+
+  <header class="app-header">
+    <div class="logo-wrap">
+      <div class="logo">A</div>
+      <div>
+        <div class="brand">API Capture</div>
+        <div class="sub-brand">接口记录工作台</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span id="statusPill" class="status-pill idle"><i></i><b>Idle</b></span>
+      <button id="themeBtn" class="icon-btn" title="切换主题">◐</button>
+      <button id="logoutBtn" class="icon-btn danger hidden" title="登出">↪</button>
+    </div>
+  </header>
+
+  <section id="authView" class="auth-card card">
+    <div class="auth-hero">
+      <div class="hero-check hidden" id="loginCheck">✓</div>
+      <h1 id="authTitle">欢迎回来</h1>
+      <p id="authDesc">登录后开始记录当前网页接口</p>
+    </div>
+    <div class="segmented"><button id="loginTab" class="active">登录</button><button id="registerTab">注册</button></div>
+    <label class="field"><span class="field-icon">📱</span><input id="phone" placeholder="手机号"></label><p id="phoneError" class="field-error"></p>
+    <label class="field"><span class="field-icon">🔒</span><input id="password" placeholder="密码" type="password"></label><p id="passwordError" class="field-error"></p>
+    <label id="confirmWrap" class="field hidden"><span class="field-icon">✅</span><input id="confirmPassword" placeholder="确认密码" type="password"></label><p id="confirmError" class="field-error"></p>
+    <button id="authSubmit" class="btn primary full"><span class="spinner hidden"></span><span class="btn-text">登录</span></button>
+    <p id="authSwitch" class="switch-text">没有账号？<a href="#">立即注册</a></p>
+  </section>
+
+  <section id="mainView" class="hidden main-stack">
+    <div class="capture-card card">
+      <div class="user-row">
+        <div class="avatar" id="avatar">U</div>
+        <div class="user-copy">
+          <div id="helloText" class="hello">Hello</div>
+          <div id="userInfo" class="muted">已登录</div>
+        </div>
+        <button id="webBtn" class="mini-link">WebPC</button>
+      </div>
+
+      <div class="capture-hero">
+        <div class="record-visual">
+          <div id="recordPulse" class="record-pulse idle"><span id="recordCount">0</span></div>
+          <div id="plusOne" class="plus-one hidden">+1</div>
+        </div>
+        <div class="capture-copy">
+          <b id="recordTitle">空闲，等待开始记录</b>
+          <p id="recordDesc">开始后只捕获当前页新发起的接口。</p>
+          <div class="record-meta">
+            <span id="recordDuration">00:00</span>
+            <span id="recordStats">命中 0 · 过滤 0</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="uploadProgress" class="upload-progress hidden"><span></span></div>
+      <button id="startBtn" class="capture-btn"><span class="spinner hidden"></span><span class="btn-text">开始记录</span></button>
+      <div class="action-grid compact">
+        <button id="stopUploadBtn" class="btn primary"><span class="spinner hidden"></span><span class="btn-text">停止并上报</span></button>
+        <button id="discardBtn" class="btn ghost-danger">放弃</button>
+      </div>
+      <div id="captureNote" class="capture-note">使用 Network 调试模式时，Chrome 会显示“正在调试此网页”。</div>
+    </div>
+
+    <div class="live-card card">
+      <div class="card-title live-title">
+        <span>实时接口</span>
+        <small id="liveHint">开始后实时展示</small>
+      </div>
+      <div id="liveStats" class="live-stats"><span>成功 0</span><span>失败 0</span><span>慢 0</span></div>
+      <label class="live-search"><span>⌕</span><input id="liveSearch" placeholder="搜索 URL / body / response / 搜索词"></label>
+      <div id="liveList" class="live-list empty">暂无接口。点击“开始记录”后，在页面中搜索、翻页或点击触发接口。</div>
+      <div id="liveDetailPanel" class="live-detail-panel hidden"></div>
+    </div>
+  </section>
+</div>
+<script src="config.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

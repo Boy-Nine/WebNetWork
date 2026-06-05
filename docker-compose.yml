@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-webgrabber}
+      POSTGRES_USER: ${POSTGRES_USER:-webgrabber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgrabber}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-webgrabber} -d $${POSTGRES_DB:-webgrabber}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    # 默认不暴露数据库端口，避免和本机 PostgreSQL 冲突。
+    # 如需本机连接数据库，可临时改为：ports: ["15432:5432"]
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    ports: ["${BACKEND_PORT:-3088}:3088"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://0.0.0.0:3088/api/health', timeout=2).read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  web:
+    build:
+      context: ./web-client
+      args:
+        VITE_API_BASE: ${PUBLIC_API_BASE:-http://0.0.0.0:3088}
+    ports: ["${WEB_PORT:-3090}:80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0/health >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  pgdata:

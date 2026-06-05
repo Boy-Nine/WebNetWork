@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.env
+web-client/node_modules/
+web-client/dist/
+backend/.env
+web-client/.env
+web-client/.env.production
+
+# Local AI/editor skill caches
+web-client/.codex/
+web-client/.cursor/

@@ -1,0 +1,20 @@
+# 此文件由 scripts/apply-config.sh 根据 deploy.env 自动生成。
+services:
+  db:
+    environment:
+      POSTGRES_DB: webgrabber
+      POSTGRES_USER: webgrabber
+      POSTGRES_PASSWORD: webgrabber
+  backend:
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://webgrabber:webgrabber@db:5432/webgrabber
+    ports:
+      - "3088:3088"
+  web:
+    build:
+      args:
+        VITE_API_BASE: http://0.0.0.0:3088
+    ports:
+      - "3090:80"
