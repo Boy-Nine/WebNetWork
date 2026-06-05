@@ -292,3 +292,57 @@ textarea.ant-input,
   max-height:0!important;
   overflow:hidden!important;
 }
+
+/* Rule edit jump/focus UX: avoid sticky topbar cover and make edit mode obvious. */
+.rule-editor-anchor{
+  scroll-margin-top:132px;
+  position:relative;
+}
+.rule-editor-card.is-editing{
+  border-color:#93c5fd!important;
+  background:linear-gradient(135deg,#ffffff 0%,#f0f7ff 100%)!important;
+  box-shadow:0 18px 46px rgba(37,99,235,.14)!important;
+}
+.rule-editor-card.is-editing::before{
+  width:6px;
+  background:linear-gradient(180deg,#2563eb,#06b6d4,#22c55e)!important;
+  opacity:1!important;
+}
+.editing-rule-banner{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:0 0 14px;
+  padding:12px 14px;
+  border:1px solid #bfdbfe;
+  border-radius:16px;
+  background:linear-gradient(135deg,#eff6ff,#ffffff);
+  color:#1d4ed8;
+  box-shadow:0 10px 24px rgba(37,99,235,.08);
+}
+.editing-rule-banner .anticon{
+  margin-top:2px;
+  font-size:16px;
+}
+.editing-rule-banner b{
+  display:block;
+  color:#1e40af;
+  font-size:13px;
+  font-weight:950;
+}
+.editing-rule-banner span{
+  display:block;
+  margin-top:3px;
+  color:#475569;
+  font-size:12px;
+  font-weight:750;
+  line-height:1.55;
+}
+.rule-editor-pulse .rule-editor-card{
+  animation:ruleEditorFocus 1.2s var(--ease-standard) both;
+}
+@keyframes ruleEditorFocus{
+  0%{transform:translateY(-3px);box-shadow:0 0 0 0 rgba(37,99,235,.32),0 18px 46px rgba(37,99,235,.14)}
+  45%{transform:translateY(0);box-shadow:0 0 0 8px rgba(37,99,235,.13),0 22px 54px rgba(37,99,235,.18)}
+  100%{transform:translateY(0);box-shadow:0 18px 46px rgba(37,99,235,.14)}
+}
