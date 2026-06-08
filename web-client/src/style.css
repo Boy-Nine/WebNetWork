@@ -346,3 +346,64 @@ textarea.ant-input,
   45%{transform:translateY(0);box-shadow:0 0 0 8px rgba(37,99,235,.13),0 22px 54px rgba(37,99,235,.18)}
   100%{transform:translateY(0);box-shadow:0 18px 46px rgba(37,99,235,.14)}
 }
+
+/* Table hover/tooltip alignment polish: keep cells fixed, tooltips only reveal full content. */
+.table-cell-text{
+  display:block;
+  width:100%;
+  max-width:100%;
+  height:24px;
+  line-height:24px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#0f172a;
+  font-size:12px;
+  font-weight:750;
+}
+.test-preview-table .ant-table-cell,
+.compact-detail-drawer .ant-table-cell,
+.sample-field-tip + .ant-table-wrapper .ant-table-cell,
+.label-table-card .ant-table-cell{
+  overflow:hidden!important;
+  vertical-align:middle!important;
+}
+.test-preview-table .ant-table-thead>tr>th,
+.compact-detail-drawer .ant-table-thead>tr>th,
+.sample-field-tip + .ant-table-wrapper .ant-table-thead>tr>th{
+  white-space:nowrap!important;
+  height:42px!important;
+  padding:8px 10px!important;
+  background:#f8fafc!important;
+  color:#475569!important;
+  font-size:12px!important;
+  font-weight:950!important;
+}
+.test-preview-table .ant-table-tbody>tr>td,
+.compact-detail-drawer .ant-table-tbody>tr>td,
+.sample-field-tip + .ant-table-wrapper .ant-table-tbody>tr>td{
+  height:42px!important;
+  padding:8px 10px!important;
+}
+.table-cell-tooltip .ant-tooltip-inner{
+  max-width:360px!important;
+  max-height:220px!important;
+  overflow:auto!important;
+  white-space:normal!important;
+  word-break:break-word!important;
+  font-size:12px!important;
+  line-height:1.55!important;
+  border-radius:10px!important;
+  padding:8px 10px!important;
+  box-shadow:0 12px 30px rgba(15,23,42,.22)!important;
+}
+.label-table-card .cell-one-line,
+.label-table-card .url-cell-text{
+  width:100%;
+  box-sizing:border-box;
+}
+.label-table-card .ant-table-cell-ellipsis,
+.test-preview-table .ant-table-cell-ellipsis,
+.compact-detail-drawer .ant-table-cell-ellipsis{
+  overflow:hidden!important;
+}
