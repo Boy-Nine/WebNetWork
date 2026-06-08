@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from ..database import get_db
 from ..models import DataLabel, User
-from ..utils.security import get_current_user
+from ..utils.security import get_current_user, mask_phone
 
 router = APIRouter(prefix="/api/labels", tags=["data labels"])
 
@@ -20,7 +20,7 @@ def slugify(name: str) -> str:
     return f"label_{s or 'data'}"
 
 def out(label: DataLabel, user: User):
-    return {"id": label.id, "name": label.name, "table_name": label.table_name, "remark": label.remark, "creator_user_id": label.user_id, "creator_phone": label.creator_phone, "can_edit": label.user_id == user.id, "created_at": label.created_at}
+    return {"id": label.id, "name": label.name, "table_name": label.table_name, "remark": label.remark, "creator_user_id": label.user_id, "creator_phone": mask_phone(label.creator_phone), "can_edit": label.user_id == user.id, "created_at": label.created_at}
 
 @router.get("/list")
 def list_labels(db: Session = Depends(get_db), user: User = Depends(get_current_user)):

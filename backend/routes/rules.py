@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import CaptureRule, DataLabel, User, UserRuleSelection, ParsedApi
-from ..utils.security import get_current_user
+from ..utils.security import get_current_user, mask_phone
 from ..utils.rule_engine import get_path, match_url, params_match, parse_dynamic_rows_by_rule, normalize_field_specs, apply_value_transform
 
 router = APIRouter(prefix="/api/rules", tags=["capture rules"])
@@ -94,7 +94,7 @@ def out(rule: CaptureRule):
     return {
         "id": rule.id,
         "creator_user_id": rule.user_id,
-        "creator_phone": rule.creator_phone,
+        "creator_phone": mask_phone(rule.creator_phone),
         "can_edit": False,
         "selected": False,
         "name": rule.name,

@@ -33,3 +33,31 @@ def get_current_user(creds: HTTPAuthorizationCredentials = Depends(bearer), db: 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+def mask_phone(value: str | None) -> str | None:
+    """Return a display-safe phone value for API responses."""
+    if value is None:
+        return None
+    text = str(value)
+    digits = ''.join(ch for ch in text if ch.isdigit())
+    if len(digits) < 7:
+        return text
+    # Preserve common +country prefix only visually through the original first chars.
+    return f"{text[:3]}****{text[-4:]}"
+
+SENSITIVE_PHONE_KEYS = {"phone", "手机号", "手机", "联系电话", "联系方式", "mobile", "tel", "telephone", "creator_phone"}
+
+def mask_sensitive_payload(value):
+    """Recursively mask obvious phone fields in JSON payloads before returning to clients."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if str(k).lower() in SENSITIVE_PHONE_KEYS or str(k) in SENSITIVE_PHONE_KEYS:
+                out[k] = mask_phone(v) if v is not None else v
+            else:
+                out[k] = mask_sensitive_payload(v)
+        return out
+    if isinstance(value, list):
+        return [mask_sensitive_payload(v) for v in value]
+    return value

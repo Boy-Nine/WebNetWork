@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Text
 from ..database import get_db
 from ..models import LabelDataRecord, DataLabel, User
-from ..utils.security import get_current_user
+from ..utils.security import get_current_user, mask_sensitive_payload
 
 router = APIRouter(prefix="/api/label-data", tags=["label data"])
 
@@ -17,11 +17,11 @@ def row_to_dict(r: LabelDataRecord, detail: bool = False):
         "label_name": r.label_name,
         "rule_id": r.rule_id,
         "rule_name": r.rule_name,
-        "row_data": r.row_data or {},
+        "row_data": mask_sensitive_payload(r.row_data or {}),
         "created_at": r.created_at,
     }
     if detail:
-        data.update({"session_id": r.session_id, "api_id": r.api_id, "raw_item": r.raw_item})
+        data.update({"session_id": r.session_id, "api_id": r.api_id, "raw_item": mask_sensitive_payload(r.raw_item)})
     return data
 
 
