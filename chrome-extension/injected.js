@@ -247,11 +247,12 @@
   function paramsForMatch(url, body) { return { ...parse_query_for_rule(url), ...parseBodyObject(body) }; }
   function parse_query_for_rule(url) { const obj = {}; try { new URL(url, location.href).searchParams.forEach((v,k)=>obj[k]=v); } catch {} return obj; }
   function ruleUrlMatch(url, rule) {
-    const pattern = rule?.url_pattern || '';
+    const pattern = String(rule?.url_pattern || '').trim();
+    const targetUrl = String(url || '').trim();
     if (!pattern) return false;
-    if (rule.url_match_type === 'equals') return url === pattern;
-    if (rule.url_match_type === 'regex') { try { return new RegExp(pattern).test(url); } catch { return false; } }
-    return url.includes(pattern);
+    if (rule.url_match_type === 'equals') return targetUrl === pattern;
+    if (rule.url_match_type === 'regex') { try { return new RegExp(pattern).test(targetUrl); } catch { return false; } }
+    return targetUrl.includes(pattern);
   }
   function ruleParamsMatch(params, filter) {
     if (!filter || typeof filter !== 'object') return true;

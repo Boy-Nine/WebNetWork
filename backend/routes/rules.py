@@ -90,6 +90,16 @@ class RuleIn(BaseModel):
     remark: str | None = None
 
 
+def normalize_rule_payload(data: dict[str, Any]) -> dict[str, Any]:
+    # 用户输入的 URL/路径常会复制出前后空格；保存前统一清理，避免插件匹配失败。
+    for key in ("name", "method", "url_pattern", "url_match_type", "response_list_path", "remark"):
+        if isinstance(data.get(key), str):
+            data[key] = data[key].strip()
+    if data.get("method"):
+        data["method"] = str(data["method"]).upper()
+    return data
+
+
 def out(rule: CaptureRule):
     return {
         "id": rule.id,
@@ -218,9 +228,9 @@ def test_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(
 def create_rule(payload: RuleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if payload.url_match_type not in {"contains", "regex", "equals"}:
         raise HTTPException(status_code=400, detail="url_match_type must be contains/regex/equals")
-    data = payload.model_dump()
-    if payload.label_id:
-        label = db.query(DataLabel).filter(DataLabel.id == payload.label_id).first()
+    data = normalize_rule_payload(payload.model_dump())
+    if data.get("label_id"):
+        label = db.query(DataLabel).filter(DataLabel.id == data.get("label_id")).first()
         if not label:
             raise HTTPException(status_code=404, detail="Label not found")
         data["label_name"] = label.name
@@ -253,10 +263,10 @@ def update_rule(rule_id: int, payload: RuleIn, db: Session = Depends(get_db), us
         raise HTTPException(status_code=404, detail="Rule not found")
     if rule.user_id != user.id:
         raise HTTPException(status_code=403, detail="Only creator can edit this rule")
-    data = payload.model_dump()
+    data = normalize_rule_payload(payload.model_dump())
     data["label_name"] = None
-    if payload.label_id:
-        label = db.query(DataLabel).filter(DataLabel.id == payload.label_id).first()
+    if data.get("label_id"):
+        label = db.query(DataLabel).filter(DataLabel.id == data.get("label_id")).first()
         if not label:
             raise HTTPException(status_code=404, detail="Label not found")
         data["label_name"] = label.name

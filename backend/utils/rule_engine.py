@@ -257,16 +257,18 @@ def channel_column_for(display_field: str) -> str | None:
     return DISPLAY_TO_CHANNEL_COLUMN.get(display_field) or (display_field if display_field in CHANNEL_COLUMNS else None)
 
 def match_url(url: str, pattern: str, match_type: str = 'contains') -> bool:
+    pattern = str(pattern or '').strip()
+    url = str(url or '').strip()
     if not pattern:
         return False
     if match_type == 'regex':
         try:
-            return re.search(pattern, url or '') is not None
+            return re.search(pattern, url) is not None
         except re.error:
             return False
     if match_type == 'equals':
-        return (url or '') == pattern
-    return pattern in (url or '')
+        return url == pattern
+    return pattern in url
 
 def coerce_nested_value(value: Any) -> Any:
     if not isinstance(value, str):
