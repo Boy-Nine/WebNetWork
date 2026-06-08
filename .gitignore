@@ -12,3 +12,10 @@ web-client/.env.production
 # Local AI/editor skill caches
 web-client/.codex/
 web-client/.cursor/
+
+# Local deployment config
+deploy.env
+docker-compose.override.yml
+backend/.env
+web-client/.env
+web-client/.env.production

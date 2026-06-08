@@ -16,7 +16,7 @@ say "API Capture 项目自检"
 say "工作目录：$ROOT"
 say ""
 
-if [[ -f deploy.env ]]; then pass "deploy.env 存在"; else bad "deploy.env 不存在"; fi
+if [[ -f deploy.env ]]; then pass "deploy.env 存在"; elif [[ -f deploy.env.example ]]; then note "deploy.env 不存在；可执行 cp deploy.env.example deploy.env 或 ./scripts/apply-config.sh 自动生成"; else bad "deploy.env.example 不存在"; fi
 if [[ -f chrome-extension/config.js ]]; then pass "插件 config.js 存在"; else bad "插件 config.js 不存在，请执行 ./scripts/apply-config.sh"; fi
 
 if [[ -f deploy.env ]]; then

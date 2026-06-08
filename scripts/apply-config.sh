@@ -5,8 +5,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${1:-$ROOT/deploy.env}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "配置文件不存在：$ENV_FILE" >&2
-  exit 1
+  if [[ "$ENV_FILE" == "$ROOT/deploy.env" && -f "$ROOT/deploy.env.example" ]]; then
+    cp "$ROOT/deploy.env.example" "$ROOT/deploy.env"
+    echo "未找到 deploy.env，已从 deploy.env.example 复制一份。请按需修改后重新执行。"
+  else
+    echo "配置文件不存在：$ENV_FILE" >&2
+    exit 1
+  fi
 fi
 
 set -a
