@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from html import unescape
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, quote
 from typing import Any
 from .api_parser import parse_json_or_text, parse_form, parse_query, find_search_keyword
 
@@ -99,12 +99,28 @@ def looks_like_title_field(cfg: dict[str, Any]) -> bool:
 def normalize_protocol_relative_url(text: str) -> str:
     return 'https:' + text if isinstance(text, str) and text.startswith('//') else text
 
-def apply_value_transform(value: Any, transform: dict[str, Any] | None = None) -> str | None:
-    text = stringify(value)
-    if text is None:
-        return None
+def render_template(template: str, value: Any, item: Any = None, *, url_encode: bool = False) -> str:
+    def fmt(v: Any) -> str:
+        text = stringify(v) or ''
+        return quote(text, safe='') if url_encode else text
+    def replace(match: re.Match[str]) -> str:
+        key = match.group(1).strip()
+        if key in ('value', '.', 'this'):
+            return fmt(value)
+        return fmt(get_path(item, key))
+    return re.sub(r'\{\s*([^{}]+?)\s*\}', replace, str(template))
+
+def apply_value_transform(value: Any, transform: dict[str, Any] | None = None, item: Any = None) -> str | None:
     cfg = transform if isinstance(transform, dict) else {}
-    if looks_like_url_field(cfg, value):
+    template = cfg.get('template') or cfg.get('format') or cfg.get('tpl')
+    text = stringify(value)
+    if text is None and not template:
+        return None
+    if text is None:
+        text = ''
+    if template:
+        text = render_template(str(template), text, item, url_encode=bool(cfg.get('urlEncode') or cfg.get('url_encode')))
+    if looks_like_url_field(cfg, value) or looks_like_url_field(cfg, text):
         text = normalize_protocol_relative_url(text)
     if looks_like_title_field(cfg):
         text = strip_html_text(text)
@@ -191,6 +207,8 @@ def normalize_field_specs(rows: list[dict[str, Any]], mapping: dict[str, Any]):
         if isinstance(right, dict):
             cfg = dict(right)
             source_path = str(cfg.pop('path', '') or cfg.pop('source', '') or cfg.pop('sourcePath', '') or cfg.pop('source_path', '') or '')
+            if not source_path and (cfg.get('template') or cfg.get('format') or cfg.get('tpl')):
+                source_path = '.'
             label = str(cfg.pop('label', '') or cfg.pop('field', '') or cfg.pop('name', '') or '')
             left_exists = any(path_exists(item, left_s) for item in rows)
             if not source_path:
@@ -354,7 +372,7 @@ def parse_by_rule(response_body: Any, rule: Any, fallback_search_keyword: str | 
             target = channel_column_for(str(display_field))
             if not target:
                 continue
-            mapped[target] = apply_value_transform(get_path(item, str(source_path)), transform)
+            mapped[target] = apply_value_transform(get_path(item, str(source_path)), transform, item)
         if not mapped.get('search_keyword') and fallback_search_keyword:
             mapped['search_keyword'] = fallback_search_keyword
         mapped['raw_item'] = item
@@ -388,7 +406,7 @@ def parse_dynamic_rows_by_rule(response_body: Any, rule: Any, fallback_search_ke
         for display_field, source_path, transform in field_specs:
             if not display_field or not source_path:
                 continue
-            row_data[str(display_field)] = apply_value_transform(get_path(item, str(source_path)), transform)
+            row_data[str(display_field)] = apply_value_transform(get_path(item, str(source_path)), transform, item)
         if fallback_search_keyword and "搜索词" not in row_data and "search_keyword" not in row_data:
             row_data["搜索词"] = fallback_search_keyword
         # 如果除了搜索词以外没有任何有效字段，不落标签明细表，避免空商品行污染数据。
