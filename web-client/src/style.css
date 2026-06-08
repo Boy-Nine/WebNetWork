@@ -439,3 +439,35 @@ textarea.ant-input,
 .ant-btn-primary.ant-btn-loading .ant-btn-loading-icon{
   color:#fff!important;
 }
+
+/* Select dropdown readability: long labels should not collapse into ... in narrow controls. */
+.ant-select-dropdown{
+  min-width:180px!important;
+}
+.ant-select-dropdown .ant-select-item-option-content{
+  white-space:nowrap!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  max-width:none!important;
+}
+.ant-select-dropdown .ant-select-item{
+  min-height:36px!important;
+  padding:8px 12px!important;
+}
+.label-bind-select,
+.label-picker-select{
+  min-width:148px!important;
+}
+.match-type-select,
+.method-select{
+  min-width:86px!important;
+}
+.label-bind-select .ant-select-selection-item,
+.label-picker-select .ant-select-selection-item,
+.label-bind-select .ant-select-selection-placeholder,
+.label-picker-select .ant-select-selection-placeholder{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
