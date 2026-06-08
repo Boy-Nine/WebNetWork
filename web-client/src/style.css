@@ -407,3 +407,35 @@ textarea.ant-input,
 .compact-detail-drawer .ant-table-cell-ellipsis{
   overflow:hidden!important;
 }
+
+/* Final button contrast guard: blue/gradient primary buttons must never render blue text on blue bg. */
+.gradient-btn,
+.gradient-btn.export,
+.ant-btn-primary:not(.ant-btn-background-ghost),
+.api-action-bar .ant-btn-primary,
+.label-data-filter-card .toolbar .ant-btn-primary{
+  color:#fff!important;
+  text-shadow:none!important;
+}
+.gradient-btn .anticon,
+.gradient-btn span,
+.gradient-btn.export .anticon,
+.gradient-btn.export span,
+.ant-btn-primary:not(.ant-btn-background-ghost) .anticon,
+.ant-btn-primary:not(.ant-btn-background-ghost) span,
+.api-action-bar .ant-btn-primary .anticon,
+.api-action-bar .ant-btn-primary span,
+.label-data-filter-card .toolbar .ant-btn-primary .anticon,
+.label-data-filter-card .toolbar .ant-btn-primary span{
+  color:#fff!important;
+  fill:#fff!important;
+}
+.gradient-btn:not(:disabled):hover,
+.ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover{
+  color:#fff!important;
+  filter:saturate(1.06) brightness(1.02);
+}
+.gradient-btn.ant-btn-loading .ant-btn-loading-icon,
+.ant-btn-primary.ant-btn-loading .ant-btn-loading-icon{
+  color:#fff!important;
+}
