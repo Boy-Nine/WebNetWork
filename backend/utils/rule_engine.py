@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from html import unescape
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, quote
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, quote, unquote
 from typing import Any
 from .api_parser import parse_json_or_text, parse_form, parse_query, find_search_keyword
 
@@ -277,16 +277,18 @@ def channel_column_for(display_field: str) -> str | None:
 def match_url(url: str, pattern: str, match_type: str = 'contains') -> bool:
     pattern = str(pattern or '').strip()
     url = str(url or '').strip()
+    decoded_url = unquote(url)
+    decoded_pattern = unquote(pattern)
     if not pattern:
         return False
     if match_type == 'regex':
         try:
-            return re.search(pattern, url) is not None
+            return re.search(pattern, url) is not None or re.search(pattern, decoded_url) is not None
         except re.error:
             return False
     if match_type == 'equals':
-        return url == pattern
-    return pattern in url
+        return url == pattern or decoded_url == decoded_pattern
+    return pattern in url or pattern in decoded_url or decoded_pattern in decoded_url
 
 def coerce_nested_value(value: Any) -> Any:
     if not isinstance(value, str):

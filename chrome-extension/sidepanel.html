@@ -67,6 +67,17 @@
 
       <div id="uploadProgress" class="upload-progress hidden"><span></span></div>
       <button id="startBtn" class="capture-btn"><span class="spinner hidden"></span><span class="btn-text">开始记录</span></button>
+      <div class="auto-run-card">
+        <div class="auto-run-head">
+          <div><b>自动触发</b><span id="autoRunStatus">未开启</span></div>
+          <div class="auto-run-buttons"><button id="pickNextBtn" class="btn ghost">选择翻页按钮</button><button id="autoRunBtn" class="btn secondary">自动下滑</button></div>
+        </div>
+        <div class="auto-run-controls">
+          <label><span>模式</span><select id="autoRunMode"><option value="scroll">只下滑</option><option value="next">点下一页</option><option value="both">下滑+翻页</option></select></label>
+          <label><span>间隔</span><select id="autoRunInterval"><option value="1500">1.5s</option><option value="2500" selected>2.5s</option><option value="4000">4s</option></select></label>
+          <label><span>次数</span><input id="autoRunMax" type="number" min="1" max="200" value="20"></label>
+        </div>
+      </div>
       <div class="action-grid compact">
         <button id="stopUploadBtn" class="btn primary"><span class="spinner hidden"></span><span class="btn-text">停止并上报</span></button>
         <button id="discardBtn" class="btn ghost-danger">放弃</button>

@@ -238,21 +238,36 @@
     }
     return cur;
   }
+  function expandNestedJsonValues(obj) {
+    const out = { ...(obj || {}) };
+    for (const [k, v] of Object.entries(obj || {})) {
+      if (typeof v !== 'string') continue;
+      const text = v.trim();
+      if (!text || !['{', '['].includes(text[0])) continue;
+      try { out[k] = JSON.parse(text); } catch {}
+    }
+    return out;
+  }
   function parseBodyObject(body) {
     if (!body) return {};
-    try { return JSON.parse(body); } catch {}
-    try { const obj = {}; new URLSearchParams(body).forEach((v,k)=>obj[k]=v); return obj; } catch {}
+    try { return expandNestedJsonValues(JSON.parse(body)); } catch {}
+    try { const obj = {}; new URLSearchParams(body).forEach((v,k)=>obj[k]=v); return expandNestedJsonValues(obj); } catch {}
     return {};
   }
   function paramsForMatch(url, body) { return { ...parse_query_for_rule(url), ...parseBodyObject(body) }; }
-  function parse_query_for_rule(url) { const obj = {}; try { new URL(url, location.href).searchParams.forEach((v,k)=>obj[k]=v); } catch {} return obj; }
+  function parse_query_for_rule(url) { const obj = {}; try { new URL(url, location.href).searchParams.forEach((v,k)=>obj[k]=v); } catch {} return expandNestedJsonValues(obj); }
+  function safeDecodeUrlText(value) {
+    try { return decodeURIComponent(String(value || '')); } catch { return String(value || ''); }
+  }
   function ruleUrlMatch(url, rule) {
     const pattern = String(rule?.url_pattern || '').trim();
     const targetUrl = String(url || '').trim();
+    const decodedUrl = safeDecodeUrlText(targetUrl);
+    const decodedPattern = safeDecodeUrlText(pattern);
     if (!pattern) return false;
-    if (rule.url_match_type === 'equals') return targetUrl === pattern;
-    if (rule.url_match_type === 'regex') { try { return new RegExp(pattern).test(targetUrl); } catch { return false; } }
-    return targetUrl.includes(pattern);
+    if (rule.url_match_type === 'equals') return targetUrl === pattern || decodedUrl === decodedPattern;
+    if (rule.url_match_type === 'regex') { try { const re = new RegExp(pattern); return re.test(targetUrl) || re.test(decodedUrl); } catch { return false; } }
+    return targetUrl.includes(pattern) || decodedUrl.includes(pattern) || decodedUrl.includes(decodedPattern);
   }
   function ruleParamsMatch(params, filter) {
     if (!filter || typeof filter !== 'object') return true;

@@ -6,68 +6,12 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import CaptureRule, DataLabel, User, UserRuleSelection, ParsedApi
 from ..utils.security import get_current_user, mask_phone
+from ..utils.api_parser import parse_json_or_text
 from ..utils.rule_engine import get_path, match_url, params_match, parse_dynamic_rows_by_rule, normalize_field_specs, apply_value_transform
+from ..utils.rule_suggester import parse_curl_text, suggest_rule_from_api, flatten_fields, preview_value, find_arrays
 
 router = APIRouter(prefix="/api/rules", tags=["capture rules"])
 
-
-FIELD_LABEL_HINTS = {
-    "nick": "店铺名称", "shop": "店铺", "shopname": "店铺名称", "shopinfo.title": "店铺名称",
-    "item_id": "商品id", "itemid": "商品id", "id": "ID", "skuid": "skuId", "sku_id": "skuId",
-    "realsales": "销量", "sales": "销量", "sold": "销量",
-    "price": "价格", "priceshow.price": "券后价", "title": "商品标题", "name": "名称",
-    "pic_path": "商品图片", "image": "图片", "img": "图片", "auctionurl": "商品链接", "url": "链接",
-    "procity": "发货地", "userId": "用户ID", "userid": "用户ID", "leafcategory": "类目",
-}
-
-def normalize_key(value: str) -> str:
-    return str(value or '').replace('_', '').replace('-', '').replace(' ', '').lower()
-
-def guess_label(path: str) -> str:
-    p = str(path)
-    low = p.lower()
-    if low in FIELD_LABEL_HINTS:
-        return FIELD_LABEL_HINTS[low]
-    if normalize_key(p) in FIELD_LABEL_HINTS:
-        return FIELD_LABEL_HINTS[normalize_key(p)]
-    tail = p.split('.')[-1]
-    if normalize_key(tail) in FIELD_LABEL_HINTS:
-        return FIELD_LABEL_HINTS[normalize_key(tail)]
-    return tail
-
-def preview_value(value: Any) -> str:
-    if value is None:
-        return ''
-    if isinstance(value, (str, int, float, bool)):
-        text = str(value)
-    elif isinstance(value, list):
-        text = f"Array({len(value)})"
-    elif isinstance(value, dict):
-        text = f"Object({len(value)})"
-    else:
-        text = str(value)
-    return text[:160] + ('...' if len(text) > 160 else '')
-
-def flatten_fields(obj: Any, prefix: str = '', depth: int = 0, limit: int = 300):
-    out = []
-    if len(out) >= limit or depth > 4:
-        return out
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            path = f"{prefix}.{k}" if prefix else str(k)
-            if isinstance(v, dict):
-                # 对对象本身不作为字段，只展开子字段。
-                out.extend(flatten_fields(v, path, depth + 1, limit))
-            elif isinstance(v, list):
-                if v and isinstance(v[0], dict):
-                    out.extend(flatten_fields(v[0], f"{path}.0", depth + 1, limit))
-                else:
-                    out.append({"path": path, "label": guess_label(path), "value": preview_value(v), "type": "array"})
-            else:
-                out.append({"path": path, "label": guess_label(path), "value": preview_value(v), "type": type(v).__name__})
-            if len(out) >= limit:
-                break
-    return out
 
 def find_sample_item(response_body: Any, response_list_path: str | None):
     root = get_path(response_body, response_list_path) if response_list_path else response_body
@@ -88,6 +32,13 @@ class RuleIn(BaseModel):
     response_list_path: str | None = None
     field_mapping: dict[str, Any] | None = None
     remark: str | None = None
+
+class CurlParseIn(BaseModel):
+    curl: str = Field(min_length=1, max_length=50000)
+
+class ResponseFieldsIn(BaseModel):
+    response: str = Field(min_length=1, max_length=2_000_000)
+    response_list_path: str | None = None
 
 
 def normalize_rule_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +95,39 @@ def list_rules(enabledOnly: bool = False, selectedOnly: bool = False, db: Sessio
         item["selected"] = r.id in selected_ids
         data.append(item)
     return {"code": 0, "data": data}
+
+
+@router.post("/parse-curl")
+def parse_curl(payload: CurlParseIn, user: User = Depends(get_current_user)):
+    # 安全说明：只解析 cURL 文本，不执行命令，也不会请求目标 URL。
+    return {"code": 0, "data": parse_curl_text(payload.curl)}
+
+
+
+@router.get("/suggest-from-api/{api_id}")
+def suggest_from_api(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    api = db.query(ParsedApi).filter(ParsedApi.id == api_id, ParsedApi.user_id == user.id).first()
+    if not api:
+        raise HTTPException(status_code=404, detail="API not found")
+    return {"code": 0, "data": suggest_rule_from_api(api)}
+
+
+@router.post("/sample-fields-from-response")
+def sample_fields_from_response(payload: ResponseFieldsIn, user: User = Depends(get_current_user)):
+    parsed, _ = parse_json_or_text(payload.response)
+    if parsed is None:
+        raise HTTPException(status_code=400, detail="Response 不是有效 JSON/JSONP，支持 {...}、[...]、callback({...})")
+    candidates = sorted(find_arrays(parsed), key=lambda x: x.get('score', 0), reverse=True)
+    selected_path = payload.response_list_path
+    if not selected_path and candidates:
+        selected_path = candidates[0].get('path') or ''
+    item, root_count = find_sample_item(parsed, selected_path)
+    if not item and not selected_path:
+        item, root_count = find_sample_item(parsed, None)
+    fields = flatten_fields(item) if item else []
+    priority = {"nick": 1, "shopInfo.title": 2, "item_id": 3, "SkuId": 3, "wareId": 3, "realSales": 4, "price": 5, "priceShow.price": 6, "title": 7, "wareName": 7, "auctionURL": 8, "pic_path": 9}
+    fields.sort(key=lambda f: (priority.get(f["path"], 999), f["path"]))
+    return {"code": 0, "data": {"sampleApiId": None, "sampleUrl": "粘贴 Response", "rootCount": root_count, "responseListPath": selected_path, "listCandidates": [{"path": x.get('path'), "count": x.get('count'), "score": x.get('score')} for x in candidates[:8]], "fields": fields[:200]}}
 
 
 @router.get("/sample-fields")
