@@ -163,6 +163,58 @@ WECHAT_PAY_PLATFORM_CERT_PATH=
 WECHAT_PAY_VERIFY_NOTIFY_SIGNATURE=false
 ```
 
+### 微信支付证书与密钥说明
+
+> 注意：微信支付证书、商户私钥、APIv3 密钥属于生产敏感信息，**不要提交到 GitHub**。本仓库已经在 `.gitignore` 中排除了 `backend/.env` 和 `backend/certs/*.pem` 等文件。
+
+本地开发时，把微信支付文件放在：
+
+```text
+backend/certs/apiclient_cert.pem  # 微信支付商户 API 证书
+backend/certs/apiclient_key.pem   # 微信支付商户 API 私钥，严禁公开
+```
+
+然后在 `backend/.env` 中配置：
+
+```env
+WECHAT_PAY_ENABLED=true
+WECHAT_PAY_MERCHANT_ID=你的商户号
+WECHAT_PAY_API_KEY_V3=你的32字节APIv3密钥
+WECHAT_PAY_APP_ID=你的AppID
+WECHAT_PAY_NOTIFY_URL=http://localhost:3088/api/membership/wechat/notify
+WECHAT_PAY_CERT_PATH=/app/backend/certs/apiclient_cert.pem
+WECHAT_PAY_KEY_PATH=/app/backend/certs/apiclient_key.pem
+```
+
+如果使用 Docker，本项目会把 `backend/` 构建进容器，所以容器内路径使用：
+
+```text
+/app/backend/certs/apiclient_cert.pem
+/app/backend/certs/apiclient_key.pem
+```
+
+线上部署建议：
+
+- 证书文件通过服务器密钥目录、Docker Secret、K8s Secret、CI/CD Secret 注入，不要放进公开仓库。
+- `WECHAT_PAY_NOTIFY_URL` 必须改成公网可访问的 HTTPS 地址，例如：
+
+```env
+WECHAT_PAY_NOTIFY_URL=https://你的域名/api/membership/wechat/notify
+```
+
+- 生产环境建议配置微信支付平台证书并开启回调签名验签：
+
+```env
+WECHAT_PAY_PLATFORM_CERT_PATH=/app/backend/certs/wechatpay_platform_cert.pem
+WECHAT_PAY_VERIFY_NOTIFY_SIGNATURE=true
+```
+
+本地联调说明：
+
+- 如果 `WECHAT_PAY_NOTIFY_URL` 是 `localhost`，微信服务器无法回调到本机。
+- 本项目已经做了兜底：订单列表刷新、插件会员刷新、支付弹窗“我已支付，刷新状态”都会主动调用微信查单接口；查到 `SUCCESS` 后会自动把订单改为 `paid` 并开通会员。
+- 如果要测试微信回调本身，请用 ngrok/frp/Cloudflare Tunnel 等内网穿透，把公网 HTTPS 地址配置到 `WECHAT_PAY_NOTIFY_URL`。
+
 示例：给某个手机号开通 31 天专业版：
 
 ```bash
