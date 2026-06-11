@@ -1,5 +1,8 @@
 # API Capture
 
+> 新电脑部署、Docker 启动、插件安装和微信支付证书配置见：[DEPLOYMENT.md](./DEPLOYMENT.md)
+
+
 > Chrome Side Panel 接口捕获插件 + FastAPI 解析后端 + React WebPC 数据管理平台。
 
 API Capture 用于手动记录网页中的接口请求，按公共规则过滤/解析响应数据，并把结构化结果沉淀为可查询、可导出的标签数据表。
