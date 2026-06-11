@@ -7,6 +7,7 @@ from sqlalchemy import Text
 from ..database import get_db
 from ..models import LabelDataRecord, DataLabel, User
 from ..utils.security import get_current_user, mask_sensitive_payload
+from ..utils.membership import export_limit, require_feature
 
 router = APIRouter(prefix="/api/label-data", tags=["label data"])
 
@@ -29,6 +30,15 @@ def normalize_dt(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+def has_effective_field_filters(fieldFilters: str | None) -> bool:
+    if not fieldFilters or fieldFilters in ("{}", "null"):
+        return False
+    try:
+        parsed = json.loads(fieldFilters)
+    except Exception:
+        return True
+    return isinstance(parsed, dict) and any(v not in (None, "") for v in parsed.values())
 
 def apply_label_filters(base, keyword: str | None, fieldFilters: str | None, startTime: datetime | None = None, endTime: datetime | None = None):
     if startTime:
@@ -74,6 +84,8 @@ def list_label_data(
     user: User = Depends(get_current_user),
 ):
     base = db.query(LabelDataRecord).filter(LabelDataRecord.user_id == user.id, LabelDataRecord.label_id == labelId)
+    if has_effective_field_filters(fieldFilters):
+        require_feature(user, "advanced_label_filter")
     base = apply_label_filters(base, keyword, fieldFilters, startTime, endTime)
     total = base.count()
     rows = base.order_by(LabelDataRecord.created_at.desc(), LabelDataRecord.id.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
@@ -84,8 +96,10 @@ def list_label_data(
 @router.get("/export")
 def export_label_data(labelId: int, keyword: str | None = None, fieldFilters: str | None = None, startTime: datetime | None = None, endTime: datetime | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     base = db.query(LabelDataRecord).filter(LabelDataRecord.user_id == user.id, LabelDataRecord.label_id == labelId)
+    if has_effective_field_filters(fieldFilters):
+        require_feature(user, "advanced_label_filter")
     base = apply_label_filters(base, keyword, fieldFilters, startTime, endTime)
-    rows = base.order_by(LabelDataRecord.created_at.desc(), LabelDataRecord.id.desc()).limit(20000).all()
+    rows = base.order_by(LabelDataRecord.created_at.desc(), LabelDataRecord.id.desc()).limit(export_limit(user)).all()
     records = [row_to_dict(r, detail=True) for r in rows]
     columns = collect_label_columns(db, user.id, labelId)
     return {"code": 0, "data": {"columns": columns, "list": records}}

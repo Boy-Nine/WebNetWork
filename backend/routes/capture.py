@@ -12,6 +12,7 @@ from ..utils.parser import parse_capture
 from ..utils.api_parser import build_parsed_api
 from ..utils.channel_parser import parse_channel_records
 from ..utils.rule_engine import find_matching_rule, parse_by_rule, parse_dynamic_rows_by_rule
+from ..utils.membership import require_capacity, export_limit, membership_payload
 
 router = APIRouter(tags=["capture"])
 
@@ -81,6 +82,7 @@ def apply_filters(q, current_user: User, start_time: datetime | None, end_time: 
 @router.post("/api/capture/upload")
 def upload_capture(payload: CaptureUpload, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     xhr_list = validate_and_normalize(payload)
+    require_capacity(db, user, "upload", len(xhr_list))
     summary = parse_capture(xhr_list)
     record = CaptureRecord(
         user_id=user.id,
@@ -172,7 +174,7 @@ def upload_capture(payload: CaptureUpload, db: Session = Depends(get_db), user: 
     db.add_all(label_rows)
     db.commit()
     db.refresh(record)
-    return {"code": 0, "message": "上传成功", "recordId": record.id, "sessionId": session.id, "insertedCount": len(parsed_rows), "apiCount": len(parsed_rows), "channelRecordCount": len(channel_rows), "labelRecordCount": len(label_rows), "skippedCount": len(skipped_rows), "skipped": skipped_rows[:20], "summary": summary}
+    return {"code": 0, "message": "上传成功", "recordId": record.id, "sessionId": session.id, "insertedCount": len(parsed_rows), "apiCount": len(parsed_rows), "channelRecordCount": len(channel_rows), "labelRecordCount": len(label_rows), "skippedCount": len(skipped_rows), "skipped": skipped_rows[:20], "summary": summary, "membership": membership_payload(db, user)}
 
 @router.get("/api/data/list")
 def list_data(
@@ -206,7 +208,7 @@ def export_data(
     user: User = Depends(get_current_user),
 ):
     start_time, end_time = resolve_time_params(startTime, endTime, start, end)
-    rows = apply_filters(db.query(CaptureRecord), user, start_time, end_time, urlKeyword or keyword).order_by(CaptureRecord.capture_time.desc().nullslast(), CaptureRecord.created_at.desc(), CaptureRecord.id.desc()).limit(10000).all()
+    rows = apply_filters(db.query(CaptureRecord), user, start_time, end_time, urlKeyword or keyword).order_by(CaptureRecord.capture_time.desc().nullslast(), CaptureRecord.created_at.desc(), CaptureRecord.id.desc()).limit(export_limit(user)).all()
     return {"code": 0, "data": [
         {**record_to_out(r), "xhr_summary": [
             {"method": x.get("method"), "url": x.get("url"), "status": x.get("responseStatus", x.get("status")), "responseBody": truncate_text(x.get("responseBody"), 500)}

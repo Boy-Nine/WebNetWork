@@ -12,6 +12,7 @@ from .routes.channel_records import router as channel_records_router
 from .routes.rules import router as rules_router
 from .routes.labels import router as labels_router
 from .routes.label_data import router as label_data_router
+from .routes.membership import router as membership_router
 
 
 def init_db_with_retry(retries: int = 30, delay: float = 1.0) -> None:
@@ -33,6 +34,17 @@ def ensure_schema_compat() -> None:
     """轻量兼容已有 Docker volume：SQLAlchemy create_all 不会给旧表补列，这里补新增列/索引。"""
     base_statements = [
         "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_plan VARCHAR(32) NOT NULL DEFAULT 'free'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_expires_at TIMESTAMPTZ",
+        "CREATE INDEX IF NOT EXISTS idx_users_membership_plan ON users(membership_plan)",
+        "CREATE INDEX IF NOT EXISTS idx_users_membership_expires_at ON users(membership_expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_membership_orders_order_no ON membership_orders(order_no)",
+        "CREATE INDEX IF NOT EXISTS idx_membership_orders_user_id ON membership_orders(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_membership_orders_status ON membership_orders(status)",
+        "CREATE INDEX IF NOT EXISTS idx_membership_orders_created_at ON membership_orders(created_at)",
+        "ALTER TABLE membership_orders ADD COLUMN IF NOT EXISTS code_url TEXT",
+        "ALTER TABLE membership_orders ADD COLUMN IF NOT EXISTS transaction_id VARCHAR(96)",
+        "CREATE INDEX IF NOT EXISTS idx_membership_orders_transaction_id ON membership_orders(transaction_id)",
         "ALTER TABLE capture_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
         "ALTER TABLE capture_sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ",
         "CREATE INDEX IF NOT EXISTS idx_capture_sessions_started_at ON capture_sessions(started_at)",
@@ -139,3 +151,4 @@ app.include_router(channel_records_router)
 app.include_router(rules_router)
 app.include_router(labels_router)
 app.include_router(label_data_router)
+app.include_router(membership_router)

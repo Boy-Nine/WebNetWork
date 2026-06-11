@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "API Capture",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "精美侧边栏手动记录当前网页新发起的 Fetch/XHR/JSONP 接口，按规则解析并上传到后端。",
   "permissions": [
     "storage",

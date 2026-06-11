@@ -7,6 +7,7 @@ from sqlalchemy import and_
 from ..database import get_db
 from ..models import DataLabel, User
 from ..utils.security import get_current_user, mask_phone
+from ..utils.membership import require_capacity
 
 router = APIRouter(prefix="/api/labels", tags=["data labels"])
 
@@ -29,6 +30,7 @@ def list_labels(db: Session = Depends(get_db), user: User = Depends(get_current_
 
 @router.post("")
 def create_label(payload: LabelIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_capacity(db, user, "label", 1)
     table_name = payload.table_name or slugify(payload.name)
     label = DataLabel(user_id=user.id, creator_phone=user.phone, name=payload.name, table_name=table_name, remark=payload.remark)
     db.add(label)

@@ -24,6 +24,7 @@ let selectedLiveRecord = null;
 let autoRunPollingTimer = null;
 let autoRunState = { running: false, count: 0, max: 0, mode: 'scroll' };
 let autoRunErrorHandled = false;
+let membershipInfo = null;
 const $ = (id) => document.getElementById(id);
 const storage = { get: (k) => chrome.storage.local.get(k), set: (v) => chrome.storage.local.set(v), remove: (k) => chrome.storage.local.remove(k) };
 function applyTheme(theme = 'auto') {
@@ -52,13 +53,99 @@ function shake(el) { if (!el) return; el.classList.remove('shake'); void el.offs
 
 function maskPhone(phone = '') { return phone.replace(/^(\+?\d{3})\d+(\d{4})$/, '$1****$2'); }
 function showToast(text, type = 'ok') { const el = $('toast'); el.textContent = text; el.className = `toast ${type}`; clearTimeout(showToast.timer); showToast.timer = setTimeout(() => el.classList.add('hidden'), 3000); }
+function openWebMembership(){ chrome.tabs.create({ url: `${WEB}?menu=profile&upgrade=1` }); }
 function setLoading(btn, loading, text) { btn.classList.toggle('loading', loading); btn.disabled = loading; btn.querySelector('.spinner')?.classList.toggle('hidden', !loading); if (text) btn.querySelector('.btn-text').textContent = text; }
 function validateForm() { const phone = $('phone').value.trim(), password = $('password').value, confirm = $('confirmPassword').value; $('phoneError').textContent = /^\+?\d{5,20}$/.test(phone) ? '' : '请输入 5-20 位数字手机号'; $('passwordError').textContent = password.length >= 6 ? '' : '密码至少 6 位'; $('confirmError').textContent = mode === 'register' && password !== confirm ? '两次密码不一致' : ''; return !$('phoneError').textContent && !$('passwordError').textContent && !$('confirmError').textContent; }
+function quotaLeft(info = membershipInfo) {
+  const used = Number(info?.usage?.monthly_api_count || 0);
+  const limit = Number(info?.limits?.monthly_api_limit || 0);
+  return Math.max(0, limit - used);
+}
+function renderMembership(info = membershipInfo) {
+  const box = $('membershipMini'); if (!box) return;
+  box.classList.remove('hidden');
+  if (!info) {
+    $('membershipPlan').textContent = '会员';
+    $('membershipQuota').textContent = '额度加载中，若长时间不显示请点刷新';
+    box.classList.remove('quota-warn');
+    return;
+  }
+  const used = Number(info.usage?.monthly_api_count || 0);
+  const limit = Number(info.limits?.monthly_api_limit || 0);
+  const left = quotaLeft(info);
+  $('membershipPlan').textContent = info.planName || '免费版';
+  $('membershipQuota').innerHTML = `<em>本月 ${used}/${limit}</em><em>剩余 ${left}</em><em>单次 ${info.limits?.per_upload_limit || '-'} 条</em>`;
+  box.classList.toggle('quota-warn', left <= Math.max(10, Math.floor(limit * 0.1)));
+}
+function renderMembershipError(message = '会员额度读取失败，请确认后端已重启') {
+  const box = $('membershipMini'); if (!box) return;
+  box.classList.remove('hidden');
+  box.classList.add('quota-warn');
+  $('membershipPlan').textContent = '会员';
+  $('membershipQuota').textContent = message;
+}
+async function handleMembershipAuthExpired() {
+  await storage.remove(['token', 'user', 'membershipInfo']);
+  membershipInfo = null;
+  renderMembershipError('登录已过期，请重新登录');
+  showToast('登录已过期，请重新登录', 'err');
+  setTimeout(showAuth, 800);
+}
+async function fetchMembership(token, options = {}) {
+  const { syncOrders = true, allowCache = true } = options;
+  try {
+    // 本地开发时微信 notify_url 是 localhost，微信服务器无法回调本机。
+    // 因此插件刷新会员前先拉一次订单列表，让后端主动向微信查单并同步 paid 状态。
+    if (syncOrders) {
+      const ordersRes = await fetch(`${API}/api/membership/orders`, {
+        cache: 'no-store',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (ordersRes.status === 401) {
+        await handleMembershipAuthExpired();
+        return null;
+      }
+    }
+    const res = await fetch(`${API}/api/membership/me?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.status === 401) {
+      await handleMembershipAuthExpired();
+      return null;
+    }
+    if (!res.ok || data.code !== 0) throw new Error(data.detail || data.message || '会员信息读取失败');
+    membershipInfo = data.data;
+    await storage.set({ membershipInfo });
+    renderMembership(membershipInfo);
+    return membershipInfo;
+  } catch (e) {
+    const detail = e?.message || String(e || '未知错误');
+    const cached = allowCache ? await storage.get('membershipInfo') : {};
+    membershipInfo = allowCache ? (cached.membershipInfo || null) : null;
+    if (membershipInfo) {
+      renderMembership(membershipInfo);
+      showToast(`会员刷新失败，已展示缓存：${detail}`, 'err');
+    }
+    else renderMembershipError(`读取失败：${detail} · ${API}`);
+    return membershipInfo;
+  }
+}
+async function ensureUploadQuota(token, count = 0) {
+  const info = await fetchMembership(token);
+  if (!info) return true;
+  const perLimit = Number(info.limits?.per_upload_limit || 0);
+  const left = quotaLeft(info);
+  if (perLimit && count > perLimit) { openWebMembership(); throw new Error(`当前套餐单次最多上报 ${perLimit} 个接口，本次 ${count} 个，请减少数量或升级会员`); }
+  if (count > left) { openWebMembership(); throw new Error(`本月接口额度不足，剩余 ${left} 个，本次 ${count} 个，请升级会员`); }
+  return true;
+}
 async function init() { const { token, user, theme } = await storage.get(['token', 'user', 'theme']); applyTheme(theme || 'auto'); token ? showMain(user) : showAuth(); }
-function showAuth() { stopPolling(); stopAutoRunPolling(); setStatusPill('idle'); $('authView').classList.remove('hidden'); $('mainView').classList.add('hidden'); $('logoutBtn').classList.add('hidden'); }
-function showMain(user) { $('authView').classList.add('hidden'); $('mainView').classList.remove('hidden'); $('logoutBtn').classList.remove('hidden'); setStatusPill('ready'); renderAutoRunState(); syncAutoRunState(); const phone = user?.phone || ''; $('avatar').textContent = phone.slice(-2) || 'U'; $('helloText').textContent = `Hi，${maskPhone(phone) || 'User'}`; $('userInfo').textContent = `ID ${user?.id || '-'} · 已连接`; syncState(); }
+function showAuth() { stopPolling(); stopAutoRunPolling(); setStatusPill('idle'); $('authView').classList.remove('hidden'); $('mainView').classList.add('hidden'); $('logoutBtn').classList.add('hidden'); $('membershipMini')?.classList.add('hidden'); }
+async function showMain(user) { $('authView').classList.add('hidden'); $('mainView').classList.remove('hidden'); $('logoutBtn').classList.remove('hidden'); setStatusPill('ready'); renderAutoRunState(); syncAutoRunState(); renderMembership(null); const phone = user?.phone || ''; $('avatar').textContent = phone.slice(-2) || 'U'; $('helloText').textContent = `Hi，${maskPhone(phone) || 'User'}`; $('userInfo').textContent = `ID ${user?.id || '-'} · 已连接`; const { token } = await storage.get('token'); if (token) fetchMembership(token); syncState(); }
 function setMode(m) { const card = $('authView'); card.classList.remove('switching'); void card.offsetWidth; card.classList.add('switching'); mode = m; $('loginTab').classList.toggle('active', m === 'login'); $('registerTab').classList.toggle('active', m === 'register'); $('confirmWrap').classList.toggle('hidden', m !== 'register'); $('authTitle').textContent = m === 'login' ? '欢迎回来' : '创建账号'; $('authDesc').textContent = m === 'login' ? '登录后手动记录当前网页接口' : '注册后即可使用接口记录功能'; $('authSubmit').querySelector('.btn-text').textContent = m === 'login' ? '登录' : '注册'; $('authSwitch').innerHTML = m === 'login' ? '没有账号？<a href="#">立即注册</a>' : '已有账号？<a href="#">返回登录</a>'; $('authSwitch').querySelector('a').onclick = (e) => { e.preventDefault(); setMode(mode === 'login' ? 'register' : 'login'); }; ['phoneError','passwordError','confirmError'].forEach(id => $(id).textContent = ''); }
-async function auth() { if (!validateForm()) return; const btn = $('authSubmit'); setLoading(btn, true, mode === 'login' ? '登录中...' : '注册中...'); try { const phone = $('phone').value.trim(), password = $('password').value; const res = await fetch(`${API}/api/user/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, password }) }); const data = await res.json(); if (!res.ok || data.code !== 0) throw new Error(data.detail || data.message || '请求失败'); if (mode === 'register') { setMode('login'); showToast('注册成功，请登录'); return; } const user = data.user || { id: data.userId, phone: data.phone }; await storage.set({ token: data.token, user }); $('loginCheck')?.classList.remove('hidden'); setTimeout(()=>$('loginCheck')?.classList.add('hidden'), 900); showMain(user); showToast('登录成功'); } catch (e) { showToast(e.message, 'err'); } finally { setLoading(btn, false, mode === 'login' ? '登录' : '注册'); } }
+async function auth() { if (!validateForm()) return; const btn = $('authSubmit'); setLoading(btn, true, mode === 'login' ? '登录中...' : '注册中...'); try { const phone = $('phone').value.trim(), password = $('password').value; const res = await fetch(`${API}/api/user/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, password }) }); const data = await res.json(); if (!res.ok || data.code !== 0) throw new Error(data.detail || data.message || '请求失败'); if (mode === 'register') { setMode('login'); showToast('注册成功，请登录'); return; } const user = data.user || { id: data.userId, phone: data.phone }; await storage.set({ token: data.token, user }); $('loginCheck')?.classList.remove('hidden'); setTimeout(()=>$('loginCheck')?.classList.add('hidden'), 900); await showMain(user); showToast('登录成功'); } catch (e) { showToast(e.message, 'err'); } finally { setLoading(btn, false, mode === 'login' ? '登录' : '注册'); } }
 async function activeTab() { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return tab; }
 async function fetchRules(token){ try { const res = await fetch(`${API}/api/rules/list?enabledOnly=true&selectedOnly=true`, { headers: { 'Authorization': `Bearer ${token}` } }); const data = await res.json(); activeRules = Array.isArray(data.data) ? data.data : []; return activeRules; } catch { activeRules = []; return []; } }
 
@@ -232,6 +319,9 @@ async function startRecording(){
   const { token } = await storage.get('token');
   if (!token) return showAuth();
   const btn = $('startBtn');
+  await fetchMembership(token);
+  const left = quotaLeft();
+  if (membershipInfo && left <= 0) { openWebMembership(); return showToast('本月接口额度已用完，请升级会员', 'err'); }
   setLoading(btn, true, '准备中...');
   try {
     const tab = await activeTab();
@@ -261,7 +351,7 @@ async function startRecording(){
   }
 }
 
-async function stopAndUpload(){ try{ await sendAutoRunMessage('stopAutoRun'); renderAutoRunState({running:false,count:0,max:0,mode:'scroll'}); stopAutoRunPolling(); }catch{} const { token } = await storage.get('token'); if (!token) return showAuth(); const btn = $('stopUploadBtn'); setUploading(true); setLoading(btn, true, '上报中...'); try { const tab = await activeTab(); let payload; try { await stopNetworkRecording(tab); payload = await getNetworkCaptured(tab); } catch { await sendToTabWithAutoInject(tab, { action: 'stopRecording' }); payload = await sendToTabWithAutoInject(tab, { action: 'getCapturedRequests' }); } if (!payload.pageUrl) { payload.pageUrl = tab.url; payload.pageTitle = tab.title; } renderLiveRequests(payload?.xhrList || [], true); const xhrCount = payload?.xhrList?.length || 0; if (!xhrCount) throw new Error('本次记录没有捕获到接口'); const body = { pageUrl: payload.pageUrl || payload.url || tab.url, pageTitle: payload.pageTitle || payload.title || tab.title, htmlContent: payload.htmlContent, startedAt: payload.startedAt, endedAt: payload.endedAt || new Date().toISOString(), xhrList: payload.xhrList }; const res = await fetch(`${API}/api/capture/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }); const data = await res.json(); if (res.status === 401) { await storage.remove(['token', 'user']); showAuth(); throw new Error('登录已过期，请重新登录'); } if (!res.ok || data.code !== 0) throw new Error(data.detail || data.message || '上传失败'); try { await clearNetworkCaptured(tab); } catch { await sendToTabWithAutoInject(tab, { action: 'clearCapturedRequests' }); } await storage.remove(`recording_${tab.id}`); lastRenderedCount = 0; renderState({}); renderLiveRequests([], true); stopPolling(); if ($('captureNote')) $('captureNote').textContent = `上报成功：${data.insertedCount ?? data.apiCount ?? xhrCount} 个接口 · 会话 ${data.sessionId || '-'}`; showToast('上报成功'); } catch(e){ shake(btn); if ($('captureNote')) $('captureNote').textContent = `上报失败：${e.message}，数据已保留，可重试。`; showToast(e.message, 'err'); await syncState(); } finally { setUploading(false); setLoading(btn, false, '停止并上报'); } }
+async function stopAndUpload(){ try{ await sendAutoRunMessage('stopAutoRun'); renderAutoRunState({running:false,count:0,max:0,mode:'scroll'}); stopAutoRunPolling(); }catch{} const { token } = await storage.get('token'); if (!token) return showAuth(); const btn = $('stopUploadBtn'); setUploading(true); setLoading(btn, true, '上报中...'); try { const tab = await activeTab(); let payload; try { await stopNetworkRecording(tab); payload = await getNetworkCaptured(tab); } catch { await sendToTabWithAutoInject(tab, { action: 'stopRecording' }); payload = await sendToTabWithAutoInject(tab, { action: 'getCapturedRequests' }); } if (!payload.pageUrl) { payload.pageUrl = tab.url; payload.pageTitle = tab.title; } renderLiveRequests(payload?.xhrList || [], true); const xhrCount = payload?.xhrList?.length || 0; if (!xhrCount) throw new Error('本次记录没有捕获到接口'); await ensureUploadQuota(token, xhrCount); const left = quotaLeft(); const perLimit = Number(membershipInfo?.limits?.per_upload_limit || 0); const okUpload = confirm(`本次将上报 ${xhrCount} 个接口，剩余额度 ${left}，单次上限 ${perLimit || '-'}。确认上报吗？`); if (!okUpload) { if ($('captureNote')) $('captureNote').textContent = '已取消上报，数据已保留，可稍后重试或放弃。'; return; } const body = { pageUrl: payload.pageUrl || payload.url || tab.url, pageTitle: payload.pageTitle || payload.title || tab.title, htmlContent: payload.htmlContent, startedAt: payload.startedAt, endedAt: payload.endedAt || new Date().toISOString(), xhrList: payload.xhrList }; const res = await fetch(`${API}/api/capture/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body) }); const data = await res.json(); if (res.status === 401) { await storage.remove(['token', 'user', 'membershipInfo']); membershipInfo=null; showAuth(); throw new Error('登录已过期，请重新登录'); } if (!res.ok || data.code !== 0) throw new Error(data.detail || data.message || '上传失败'); if (data.membership) { membershipInfo = data.membership; await storage.set({ membershipInfo }); renderMembership(membershipInfo); } try { await clearNetworkCaptured(tab); } catch { await sendToTabWithAutoInject(tab, { action: 'clearCapturedRequests' }); } await storage.remove(`recording_${tab.id}`); lastRenderedCount = 0; renderState({}); renderLiveRequests([], true); stopPolling(); if ($('captureNote')) $('captureNote').textContent = `上报成功：${data.insertedCount ?? data.apiCount ?? xhrCount} 个接口 · 会话 ${data.sessionId || '-'}`; showToast('上报成功'); } catch(e){ shake(btn); if ($('captureNote')) $('captureNote').textContent = `上报失败：${e.message}，数据已保留，可重试。`; showToast(e.message, 'err'); await syncState(); } finally { setUploading(false); setLoading(btn, false, '停止并上报'); } }
 
 async function discardRecording(){ try { await sendAutoRunMessage('stopAutoRun').catch(()=>{}); renderAutoRunState({running:false,count:0,max:0,mode:'scroll'}); stopAutoRunPolling(); const tab = await activeTab(); try { await clearNetworkCaptured(tab); } catch { await sendToTabWithAutoInject(tab, { action: 'clearCapturedRequests' }); } await storage.remove(`recording_${tab.id}`); lastRenderedCount = 0; renderState({}); renderLiveRequests([], true); stopPolling(); if ($('captureNote')) $('captureNote').textContent = '已放弃本次记录，缓存已清空。'; showToast('已放弃记录'); } catch(e){ showToast(e.message, 'err'); } }
 
@@ -269,6 +359,14 @@ $('loginTab').onclick = () => setMode('login'); $('registerTab').onclick = () =>
 function addRipple(btn){ btn.addEventListener('click', (e)=>{ const r=btn.getBoundingClientRect(); btn.style.setProperty('--ripple-x', `${e.clientX-r.left}px`); btn.style.setProperty('--ripple-y', `${e.clientY-r.top}px`); btn.classList.remove('ripple'); void btn.offsetWidth; btn.classList.add('ripple'); }); }
 document.querySelectorAll('.btn,.capture-btn,.icon-btn').forEach(addRipple);
 $('liveSearch')?.addEventListener('input', (e)=>{ liveSearchKeyword = e.target.value.trim(); renderLiveRequests(liveRequests, true); });
+$('membershipUpgradeBtn')?.addEventListener('click', openWebMembership);
+$('membershipRefreshBtn')?.addEventListener('click', async()=>{
+  const { token } = await storage.get('token');
+  if (token) {
+    const info = await fetchMembership(token, { syncOrders: true, allowCache: false });
+    if (info) showToast(`会员已刷新：${info.planName || info.plan || '会员'}`, 'info');
+  }
+});
 $('themeBtn').onclick = toggleTheme; $('authSubmit').onclick = auth; $('startBtn').onclick = startRecording; $('autoRunBtn').onclick = toggleAutoRun; $('pickNextBtn').onclick = pickNextButton; $('stopUploadBtn').onclick = stopAndUpload; $('discardBtn').onclick = discardRecording; $('webBtn').onclick = () => chrome.tabs.create({ url: WEB });
-async function logout(){ const view = $('mainView'); view.classList.add('fade-out'); await new Promise(r=>setTimeout(r,260)); await storage.remove(['token', 'user']); view.classList.remove('fade-out'); showAuth(); showToast('已登出'); }
+async function logout(){ const view = $('mainView'); view.classList.add('fade-out'); await new Promise(r=>setTimeout(r,260)); await storage.remove(['token', 'user', 'membershipInfo']); membershipInfo=null; view.classList.remove('fade-out'); showAuth(); showToast('已登出'); }
 $('logoutBtn').onclick = logout; init();

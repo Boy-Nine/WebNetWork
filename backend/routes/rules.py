@@ -9,6 +9,7 @@ from ..utils.security import get_current_user, mask_phone
 from ..utils.api_parser import parse_json_or_text
 from ..utils.rule_engine import get_path, match_url, params_match, parse_dynamic_rows_by_rule, normalize_field_specs, apply_value_transform
 from ..utils.rule_suggester import parse_curl_text, suggest_rule_from_api, flatten_fields, preview_value, find_arrays
+from ..utils.membership import require_capacity, require_feature
 
 router = APIRouter(prefix="/api/rules", tags=["capture rules"])
 
@@ -99,6 +100,7 @@ def list_rules(enabledOnly: bool = False, selectedOnly: bool = False, db: Sessio
 
 @router.post("/parse-curl")
 def parse_curl(payload: CurlParseIn, user: User = Depends(get_current_user)):
+    require_feature(user, "curl_import")
     # 安全说明：只解析 cURL 文本，不执行命令，也不会请求目标 URL。
     return {"code": 0, "data": parse_curl_text(payload.curl)}
 
@@ -106,6 +108,7 @@ def parse_curl(payload: CurlParseIn, user: User = Depends(get_current_user)):
 
 @router.get("/suggest-from-api/{api_id}")
 def suggest_from_api(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_feature(user, "auto_rule_suggest")
     api = db.query(ParsedApi).filter(ParsedApi.id == api_id, ParsedApi.user_id == user.id).first()
     if not api:
         raise HTTPException(status_code=404, detail="API not found")
@@ -114,6 +117,7 @@ def suggest_from_api(api_id: int, db: Session = Depends(get_db), user: User = De
 
 @router.post("/sample-fields-from-response")
 def sample_fields_from_response(payload: ResponseFieldsIn, user: User = Depends(get_current_user)):
+    require_feature(user, "auto_field_detect")
     parsed, _ = parse_json_or_text(payload.response)
     if parsed is None:
         raise HTTPException(status_code=400, detail="Response 不是有效 JSON/JSONP，支持 {...}、[...]、callback({...})")
@@ -139,6 +143,7 @@ def sample_fields(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    require_feature(user, "auto_field_detect")
     q = db.query(ParsedApi).filter(ParsedApi.user_id == user.id, ParsedApi.response_body.isnot(None))
     if apiId:
         q = q.filter(ParsedApi.id == apiId)
@@ -166,6 +171,7 @@ def sample_fields(
 
 @router.get("/{rule_id}/test")
 def test_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_feature(user, "rule_test")
     rule = db.query(CaptureRule).filter(CaptureRule.id == rule_id).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -177,12 +183,22 @@ def test_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(
         q = q.filter(ParsedApi.url.ilike(f"%{rule.url_pattern.strip()}%"))
     candidates = q.order_by(ParsedApi.created_at.desc(), ParsedApi.id.desc()).limit(80).all()
     checked = 0
+    diagnostics = []
+    summary = {"urlFailed": 0, "methodFailed": 0, "paramsFailed": 0}
     for api in candidates:
         checked += 1
         url_ok = match_url(api.url or '', rule.url_pattern, rule.url_match_type)
         method_ok = (not rule.method) or rule.method.upper() == api.method
         params_ok = params_match(api.request_params, rule.params_filter)
+        if not url_ok:
+            summary["urlFailed"] += 1
+        if not method_ok:
+            summary["methodFailed"] += 1
+        if not params_ok:
+            summary["paramsFailed"] += 1
         if not (url_ok and method_ok and params_ok):
+            if len(diagnostics) < 8:
+                diagnostics.append({"apiId": api.id, "url": api.url, "method": api.method, "urlOk": url_ok, "methodOk": method_ok, "paramsOk": params_ok})
             continue
         root = get_path(api.response_body, rule.response_list_path)
         root_count = len(root) if isinstance(root, list) else (1 if isinstance(root, dict) else 0)
@@ -206,10 +222,11 @@ def test_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(
                 raw_v = get_path(sample_item, str(source_path))
                 mapping_checks.append({"left": display_field, "right": source_path, "leftHit": bool(display_field), "rightHit": raw_v is not None, "sample": preview_value(apply_value_transform(raw_v, transform)), "transform": transform})
         return {"code": 0, "data": {"matched": True, "apiId": api.id, "apiUrl": api.url, "checked": checked, "urlOk": url_ok, "methodOk": method_ok, "paramsOk": params_ok, "listPath": rule.response_list_path, "rootCount": root_count, "parsedCount": len(parsed), "columns": columns, "preview": preview, "mappingChecks": mapping_checks}}
-    return {"code": 0, "data": {"matched": False, "checked": checked, "message": "没有找到最近可测试的命中接口；请先用插件捕获并上报一次。"}}
+    return {"code": 0, "data": {"matched": False, "checked": checked, "summary": summary, "diagnostics": diagnostics, "message": "没有找到最近可测试的命中接口；请检查 URL 匹配、请求方法或 Params 过滤。"}}
 
 @router.post("")
 def create_rule(payload: RuleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_capacity(db, user, "rule", 1)
     if payload.url_match_type not in {"contains", "regex", "equals"}:
         raise HTTPException(status_code=400, detail="url_match_type must be contains/regex/equals")
     data = normalize_rule_payload(payload.model_dump())

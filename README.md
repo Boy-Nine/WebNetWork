@@ -129,3 +129,69 @@ docker compose up -d --build
 ## License
 
 [MIT](./LICENSE)
+
+## Membership / Commercialization
+
+项目已内置会员基础能力：
+
+- 免费版：基础捕获、基础查询、手写规则、少量导出。
+- 专业版：自动生成规则、自动识别字段、cURL 导入、规则测试诊断、高级字段筛选、更大导出额度。
+- 团队版：批量删除、团队级额度、更多规则/标签/导出上限。
+
+后端会在关键接口强校验套餐能力和额度，不只依赖前端禁用按钮。
+
+### 手动开通会员
+
+生产环境请先配置管理密钥：
+
+```env
+MEMBERSHIP_ADMIN_KEY=replace-with-a-long-random-secret
+
+# 微信支付 API v3 / Native 扫码支付
+WECHAT_PAY_ENABLED=true
+WECHAT_PAY_MERCHANT_ID=your_mch_id
+WECHAT_PAY_API_KEY_V3=your_32_byte_api_v3_key
+WECHAT_PAY_APP_ID=your_appid
+# 本地开发可先写本机/内网穿透地址；上线前只改这里为公网 HTTPS 回调地址
+WECHAT_PAY_NOTIFY_URL=http://localhost:3088/api/membership/wechat/notify
+WECHAT_PAY_CERT_PATH=/app/backend/certs/apiclient_cert.pem
+WECHAT_PAY_KEY_PATH=/app/backend/certs/apiclient_key.pem
+# 可留空，后端会从 apiclient_cert.pem 自动读取商户证书序列号
+WECHAT_PAY_MCH_SERIAL_NO=
+# 生产建议配置微信支付平台证书并开启回调签名验签
+WECHAT_PAY_PLATFORM_CERT_PATH=
+WECHAT_PAY_VERIFY_NOTIFY_SIGNATURE=false
+```
+
+示例：给某个手机号开通 31 天专业版：
+
+```bash
+curl -X POST 'http://localhost:3088/api/membership/admin/grant' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Admin-Key: replace-with-a-long-random-secret' \
+  -d '{"phone":"13734295322","plan":"pro","days":31}'
+```
+
+> `/api/membership/checkout` 已接入微信支付 API v3 Native 下单，返回 `codeUrl` 后前端展示微信扫码二维码。微信回调 `/api/membership/wechat/notify` 解密成功、校验订单号与金额后自动更新订单为 `paid` 并开通会员。
+
+### 会员订单闭环
+
+当前已支持“创建订单 → 管理员确认 → 自动开通会员”的基础闭环：
+
+1. 用户在 WebPC 会员弹窗点击“创建订单”。
+2. 后端生成/复用 10 分钟内有效的 `membership_orders` 待支付订单，并调用微信 Native 下单返回二维码链接。
+3. 管理员确认订单：
+
+```bash
+# 微信支付成功后会自动回调，无需管理员确认。
+# 本地联调时注意：微信服务器无法访问 localhost，需要使用 ngrok/frp 等内网穿透地址作为 WECHAT_PAY_NOTIFY_URL。
+```
+
+4. 订单变为 `paid`，系统自动更新用户会员套餐和到期时间。
+
+管理员也可以查询用户和订单：
+
+```bash
+curl 'http://localhost:3088/api/membership/admin/users' -H 'X-Admin-Key: replace-with-a-long-random-secret'
+curl 'http://localhost:3088/api/membership/admin/orders?status=pending' -H 'X-Admin-Key: replace-with-a-long-random-secret'
+```

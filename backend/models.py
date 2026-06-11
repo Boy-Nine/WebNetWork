@@ -10,6 +10,8 @@ class User(Base):
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    membership_plan: Mapped[str] = mapped_column(String(32), nullable=False, default="free", server_default="free", index=True)
+    membership_expires_at = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at = mapped_column(DateTime(timezone=True), server_default=func.now())
     records = relationship("CaptureRecord", back_populates="user")
     sessions = relationship("CaptureSession", back_populates="user")
@@ -169,3 +171,22 @@ class LabelDataRecord(Base):
     row_data = mapped_column(JSONB, nullable=False, default=dict)
     raw_item = mapped_column(JSONB, nullable=True)
     created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class MembershipOrder(Base):
+    __tablename__ = "membership_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    order_no: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    plan: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    plan_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    days: Mapped[int] = mapped_column(Integer, nullable=False, default=31)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    pay_channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    code_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    paid_at = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)

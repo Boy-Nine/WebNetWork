@@ -8,6 +8,11 @@ from ..models import ParsedApi, User, CaptureRule
 from ..utils.security import get_current_user
 from ..utils.api_parser import truncate_text
 from ..utils.rule_engine import parse_dynamic_rows_by_rule
+from ..utils.membership import export_limit, require_feature
+from pydantic import BaseModel, Field
+
+class BatchDeleteIn(BaseModel):
+    ids: list[int] = Field(default_factory=list, max_length=500)
 
 router = APIRouter(prefix="/api/apis", tags=["parsed apis"])
 
@@ -143,8 +148,21 @@ def export_apis(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    rows = apply_api_filters(db.query(ParsedApi), user, normalize_dt(startTime), normalize_dt(endTime), apiUrlKeyword or urlKeyword, pageUrlKeyword, method, statusCode, failedOnly, minDurationMs, searchKeyword, labelId, labelName).order_by(ParsedApi.captured_at.desc().nullslast(), ParsedApi.created_at.desc(), ParsedApi.id.desc()).limit(20000).all()
+    rows = apply_api_filters(db.query(ParsedApi), user, normalize_dt(startTime), normalize_dt(endTime), apiUrlKeyword or urlKeyword, pageUrlKeyword, method, statusCode, failedOnly, minDurationMs, searchKeyword, labelId, labelName).order_by(ParsedApi.captured_at.desc().nullslast(), ParsedApi.created_at.desc(), ParsedApi.id.desc()).limit(export_limit(user)).all()
     return {"code": 0, "data": [api_to_out(r, detail=True) for r in rows]}
+
+@router.delete("/batch")
+def delete_apis_batch(payload: BatchDeleteIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_feature(user, "batch_delete")
+    ids = sorted({int(x) for x in (payload.ids or []) if int(x) > 0})
+    if not ids:
+        raise HTTPException(status_code=400, detail="请选择要删除的记录")
+    rows = db.query(ParsedApi).filter(ParsedApi.user_id == user.id, ParsedApi.id.in_(ids)).all()
+    deleted = len(rows)
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return {"code": 0, "message": "删除成功", "deleted": deleted, "requested": len(ids)}
 
 @router.get("/{api_id}")
 def api_detail(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
